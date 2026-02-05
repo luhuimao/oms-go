@@ -1,60 +1,67 @@
-
-
-# 🚀 Atlas OMS
-
-**Production-Grade Contract Order Management System**
-
-> A high-performance, exchange-grade Order Management System (OMS) designed for derivatives trading platforms.
-> Inspired by the internal architectures of **Binance / OKX / Bybit**, built in Go.
-
----
+# Atlas OMS – Production-Grade Order Management System
 
 ## Overview
 
-**Atlas OMS** is a **production-ready order and position management core** for centralized derivatives exchanges and professional trading platforms.
+**Atlas OMS** is a high-performance, production-ready Order Management System (OMS) designed for centralized derivatives exchanges and professional trading platforms. Inspired by the internal architectures of **Binance**, **OKX**, and **Bybit**, Atlas OMS provides the core infrastructure to handle order lifecycle, risk management, position tracking, and liquidation in a modular, scalable manner.
 
-It is designed to operate as a **Trading Gateway / OMS layer**, handling:
-
-* Order lifecycle management
-* Risk & margin validation
-* Position accounting
-* Leverage & liquidation logic
-* Event-driven integration with a matching engine
-
-> ❌ Atlas OMS does **not** perform price matching
-> ✅ It integrates seamlessly with external matching engines via events
+This is **not a demo**; it is designed with production reliability and extensibility in mind.
 
 ---
 
-## Key Capabilities
+## Core Features
 
-### 🧾 Order Management
+### Order Management
 
-* Limit / Market orders
-* Full order lifecycle state machine
-* Idempotent order handling
-* In-memory acceleration + durable persistence ready
+* Full order lifecycle (NEW, PARTIALLY_FILLED, FILLED, CANCELED)
+* Limit and Market orders
+* Idempotent order processing
+* Integration with matching engine via events
 
-### 📊 Position & Margin Engine
+### Position and Margin Engine
 
 * One-way position mode
-* Isolated margin
-* Configurable leverage
-* Real-time PnL & equity calculation
+* Isolated margin support
+* Configurable leverage per user
+* Real-time PnL calculation and equity tracking
 
-### ⚡ Liquidation Engine
+### Liquidation Engine
 
-* Mark-price driven liquidation checks
+* Mark-price-driven liquidation checks
 * Maintenance margin enforcement
-* Deterministic liquidation triggering
-* Designed to generate **IOC liquidation orders** (matching-engine friendly)
+* IOC liquidation orders for seamless market execution
+* Hooks for Insurance Fund and ADL (Automatic Deleveraging)
 
-### 🔐 Strong Consistency Model
+### Risk Management
 
-* **Single-order sequential execution**
-* Hash-based worker dispatching
-* Deterministic state transitions
-* Replay-safe event handling
+* Margin and leverage validation
+* Maintenance margin monitoring
+* Dynamic risk limits (planned for future versions)
+
+### System Design
+
+* Event-driven architecture
+* Memory-first with persistence backend optional
+* Deterministic and replayable state transitions
+* Hash-based worker dispatch for per-order serialization
+
+---
+
+## IOC Liquidation → Matching Engine Closed Loop
+
+Atlas OMS implements a **production-grade liquidation flow**:
+
+1. **Liquidation Trigger**: When a position’s maintenance margin is breached.
+2. **Position Freeze**: Prevent further user actions.
+3. **IOC Liquidation Order Creation**: Generate system market order with Immediate-Or-Cancel TIF.
+4. **Send to Matching Engine**: Matching engine executes against order book.
+5. **Trade Event Backflow**: Trades are returned to OMS to update position, margin, and realized PnL.
+6. **Post-Liquidation Handling**: Remaining positions are processed via Insurance Fund or ADL if necessary.
+
+This design ensures:
+
+* Strong consistency
+* Market-driven price discovery
+* Auditability of liquidation events
 
 ---
 
@@ -71,6 +78,7 @@ Client / API
 │ Position Svc  │
 │ Margin Engine │
 │ Liquidation   │
+│ Risk Engine   │
 └───────┬───────┘
         │ Events (Kafka / NATS / MQ)
         ▼
@@ -79,92 +87,37 @@ Client / API
 
 ### Design Principles
 
-* **Event-Driven**
-* **Memory-First, Persistence-Backed**
-* **Deterministic & Replayable**
-* **Horizontally Scalable**
+* Event-driven and decoupled
+* Deterministic execution
+* Horizontal scalability
+* Replayable state for fault tolerance
 
 ---
 
-## Repository Structure
+## Repo Structure
 
 ```
-oms-demo/
+oms-project/
 ├── cmd/oms/                # Service entrypoint
 ├── internal/
-│   ├── domain/             # Pure domain models
-│   ├── service/            # Core business logic
-│   ├── engine/             # Sequential execution engine
-│   ├── memory/             # In-memory state (orders / positions)
-│
-├── pkg/                    # Shared utilities (ID generator, etc.)
+│   ├── domain/             # Models and event definitions
+│   ├── service/            # Core business logic (OMS, Position, Liquidation, Risk)
+│   ├── engine/             # Sequential execution engine / dispatcher
+│   ├── memory/             # In-memory state stores
+│   └── infra/              # Integration / mock matching engine
+├── pkg/                    # Utilities (ID generator, helpers)
 ├── go.mod
 └── README.md
 ```
 
 ---
 
-## Core Components
-
-### Order Service
-
-Responsible for:
-
-* Order validation & lifecycle
-* Driving position updates
-* Emitting order events
-
-### Position Service
-
-* Maintains per-user per-symbol positions
-* Computes average entry price
-* Tracks margin & leverage
-
-### Liquidation Engine
-
-* Evaluates margin safety using mark price
-* Triggers forced liquidation when equity ≤ maintenance margin
-* Designed for seamless IOC liquidation order creation
-
----
-
-## Consistency Model
-
-Atlas OMS guarantees:
-
-* **Per-order strong consistency**
-* No concurrent state mutation for the same order
-* Deterministic execution across restarts
-
-Implementation:
-
-* Hash-based dispatcher
-* Single goroutine per order key
-
-This is the same execution model used by **tier-1 exchanges**.
-
----
-
-## Supported Trading Model (v1)
-
-| Feature                | Status |
-| ---------------------- | ------ |
-| Linear Contracts       | ✅      |
-| Isolated Margin        | ✅      |
-| One-Way Position       | ✅      |
-| Mark Price Liquidation | ✅      |
-| Cross Margin           | ⏳      |
-| Hedge Mode             | ⏳      |
-| ADL / Insurance Fund   | ⏳      |
-
----
-
 ## Getting Started
 
-### Requirements
+### Prerequisites
 
-* Go **1.21+**
-* Linux / macOS
+* Go 1.21+
+* Linux/macOS
 
 ### Run
 
@@ -172,27 +125,7 @@ This is the same execution model used by **tier-1 exchanges**.
 go run ./cmd/oms
 ```
 
-You will see:
-
-* Order submission
-* Trade execution
-* Position update
-* Liquidation check
-
----
-
-## Production Readiness
-
-Atlas OMS is designed with production deployment in mind:
-
-* Clear service boundaries
-* Dependency injection
-* Stateless workers
-* Ready for Kafka / Redis / MySQL integration
-* Designed for multi-AZ horizontal scaling
-
-> ⚠️ Persistence and messaging layers are intentionally abstracted
-> to allow seamless integration into existing infrastructure
+This will start the OMS service, handle example order submission, trade execution, position updates, and demonstrate IOC liquidation.
 
 ---
 
@@ -201,56 +134,31 @@ Atlas OMS is designed with production deployment in mind:
 * Centralized derivatives exchanges
 * Prop trading platforms
 * Institutional trading gateways
-* Quant trading OMS
-* Exchange simulation & research environments
+* Quantitative research environments
+* Exchange simulation platforms
 
 ---
 
 ## Roadmap
 
-### Short-Term
+**Short-Term:** IOC liquidation order generation, Risk Limit tiers, Reduce-Only positions.
 
-* IOC liquidation order generation
-* Risk limit tiers (dynamic MM)
-* Position close & reduce-only logic
+**Mid-Term:** Cross-margin support, Hedge mode, Insurance fund integration.
 
-### Mid-Term
-
-* Cross margin support
-* Dual-side (hedge mode)
-* Insurance fund integration
-
-### Long-Term
-
-* ADL engine
-* Portfolio margin
-* Multi-asset collateral
+**Long-Term:** ADL engine, Portfolio margin, Multi-asset collateral.
 
 ---
 
-## Why Atlas OMS
+## Licensing
 
-* **Not a demo**
-* **Not a toy matching engine**
-* Built with **real exchange failure modes in mind**
-* Designed by engineers who understand **trading system invariants**
-
-If you are building a **real exchange**, this is the layer you cannot afford to get wrong.
-
----
-
-## License
-
-Apache 2.0 (or proprietary license available upon request)
-
----
+Apache 2.0 (or commercial licensing available).
 
 ## Contact
 
-For commercial licensing, consulting, or integration support:
+For commercial licensing or integration support:
 
-> 📧 [luhuimao@gmail.com](mailto:luhuimao@gmail.com)
+> 📧 [luhuimao@gmail.com](mailto:luhuimao@gmail.com) 
 
 ---
 
-### ⭐ Star this repo if you’re serious about trading infrastructure
+**Atlas OMS is designed to be the backbone of a real-world derivatives trading platform. It provides a scalable, deterministic, and auditable infrastructure suitable for production environments.**
