@@ -249,7 +249,7 @@ Apache 2.0 (or proprietary license available upon request)
 
 For commercial licensing, consulting, or integration support:
 
-> 📧 [business@atlas-oms.io](mailto:business@atlas-oms.io) *(placeholder)*
+> 📧 [luhuimao@gmail.com](mailto:luhuimao@gmail.com)
 
 ---
 
