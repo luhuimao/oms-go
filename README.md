@@ -1,5 +1,7 @@
 # Atlas OMS – Production-Grade Order Management System
 
+English | [简体中文](README_CN.md)
+
 ## Overview
 
 **Atlas OMS** is a high-performance, production-ready Order Management System (OMS) designed for centralized derivatives exchanges and professional trading platforms. Inspired by the internal architectures of **Binance**, **OKX**, and **Bybit**, Atlas OMS provides the core infrastructure to handle order lifecycle, risk management, position tracking, and liquidation in a modular, scalable manner.
