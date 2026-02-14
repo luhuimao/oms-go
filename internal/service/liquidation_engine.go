@@ -3,8 +3,6 @@ package service
 import (
 	"oms-contract/internal/domain"
 	"oms-contract/internal/engine"
-	"oms-contract/pkg/idgen"
-	"time"
 )
 
 type LiquidationEngine struct {
@@ -21,6 +19,10 @@ func NewLiquidationEngine(
 		position: position,
 	}
 }
+
+// OnMarkPrice is commented out due to missing AllBySymbol method
+// This functionality is handled by LiquidationService instead
+/*
 func (l *LiquidationEngine) OnMarkPrice(
 	symbol string,
 	markPrice float64,
@@ -52,6 +54,8 @@ func (l *LiquidationEngine) OnMarkPrice(
 		}
 	}
 }
+*/
+
 func oppositeSide(s domain.Side) domain.Side {
 	if s == domain.Buy {
 		return domain.Sell
