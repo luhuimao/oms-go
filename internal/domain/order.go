@@ -13,4 +13,5 @@ type Order struct {
 	FilledQty float64
 	Status    OrderStatus
 	CreatedAt time.Time
+	IsSystem  bool
 }
