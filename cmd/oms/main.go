@@ -7,8 +7,8 @@ import (
 	"oms-contract/infra/matching"
 	"oms-contract/internal/domain"
 	"oms-contract/internal/engine"
-	"oms-contract/internal/memory"
 	"oms-contract/internal/service"
+	"oms-contract/internal/snapshot"
 	"oms-contract/pkg/idgen"
 )
 
@@ -24,18 +24,56 @@ func main() {
 	// ===================================
 	printSeparator("INITIALIZING SYSTEM COMPONENTS")
 
-	orderBook := memory.NewOrderBook()
-	positionBook := memory.NewPositionBook()
+	// Initialize Snapshot & Event Architecture
+	eventStore, err := snapshot.NewEventStore("./data/events")
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize event store: %v", err))
+	}
+	snapshotManager, err := snapshot.NewSnapshotManager("./data/snapshots", 5)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize snapshot manager: %v", err))
+	}
+
+	// Try to recover state or start fresh
+	fmt.Println("↺ initializing logic state...")
+
+	// Initialize and run ReplayEngine
+	replayEngine := snapshot.NewReplayEngine(eventStore, snapshotManager)
+	systemState, err := replayEngine.Replay()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to replay state: %v", err))
+	}
+
+	// Print recovery stats
+	fmt.Printf("✓ State recovered: %d orders, %d positions, last_event_id=%d\n",
+		len(systemState.OrderBook.GetAll()),
+		len(systemState.PositionBook.GetAll()),
+		systemState.LastEventID,
+	)
+
+	eventBus := snapshot.NewEventBus(eventStore, systemState)
+	fmt.Println("✓ Event Sourcing infrastructure ready")
+
+	// Use the OrderBook/PositionBook from SystemState if we want strict event sourcing,
+	// or let services have their own.
+	// For this demo, let's use the ones created by SystemState to ensure consistency if we were to replay.
+	// BUT CreateOrder uses EventBus -> SystemState -> SystemState.OrderBook.
+	// OrderService reads from s.book.
+	// If s.book is DIFFERENT from SystemState.OrderBook, OrderService will NOT see updates applied by EventBus!
+	// CRITICAL FIX: We must pass SystemState's books to services.
+
+	orderBook := systemState.OrderBook
+	positionBook := systemState.PositionBook
 	dispatcher := engine.NewDispatcher(4)
 	idGen := idgen.New()
 
-	fmt.Println("✓ Order Book initialized")
-	fmt.Println("✓ Position Book initialized")
+	fmt.Println("✓ Order Book initialized (linked to EventBus)")
+	fmt.Println("✓ Position Book initialized (linked to EventBus)")
 	fmt.Println("✓ Dispatcher initialized (4 workers)")
 	fmt.Println("✓ ID Generator initialized")
 
 	// Create services with proper dependency injection
-	positionSvc := service.NewPositionService(positionBook)
+	positionSvc := service.NewPositionService(positionBook, eventBus)
 	fmt.Println("✓ Position Service created")
 
 	// Placeholder for matching gateway (will be injected later)
@@ -44,7 +82,7 @@ func main() {
 	liqSvc := service.NewLiquidationService(matchingGw, idGen)
 	fmt.Println("✓ Liquidation Service created")
 
-	orderSvc := service.NewOrderService(orderBook, positionSvc, liqSvc)
+	orderSvc := service.NewOrderService(orderBook, positionSvc, liqSvc, eventBus)
 	fmt.Println("✓ Order Service created")
 
 	// Inject OMS back into mock matching (circular dependency resolution)
@@ -52,8 +90,13 @@ func main() {
 	liqSvc = service.NewLiquidationService(matchingGw, idGen)
 
 	// Recreate order service with correct liquidation service
-	orderSvc = service.NewOrderService(orderBook, positionSvc, liqSvc)
+	orderSvc = service.NewOrderService(orderBook, positionSvc, liqSvc, eventBus)
 	fmt.Println("✓ Mock Matching Engine connected")
+
+	// Start periodic snapshots
+	stopSnapshots := make(chan struct{})
+	go snapshotManager.TakeSnapshotPeriodic(systemState, 10*time.Second, stopSnapshots)
+	defer close(stopSnapshots)
 
 	time.Sleep(500 * time.Millisecond)
 

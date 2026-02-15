@@ -3,14 +3,19 @@ package service
 import (
 	"oms-contract/internal/domain"
 	"oms-contract/internal/memory"
+	"oms-contract/internal/snapshot"
 )
 
 type PositionService struct {
-	book *memory.PositionBook
+	book     *memory.PositionBook
+	eventBus *snapshot.EventBus
 }
 
-func NewPositionService(book *memory.PositionBook) *PositionService {
-	return &PositionService{book: book}
+func NewPositionService(book *memory.PositionBook, eb *snapshot.EventBus) *PositionService {
+	return &PositionService{
+		book:     book,
+		eventBus: eb,
+	}
 }
 
 func (s *PositionService) Get(
@@ -48,7 +53,24 @@ func (s *PositionService) OnTrade(
 		p.Qty += qty
 	}
 
-	s.book.Save(p)
+	// Persist via EventBus
+	event := snapshot.NewEvent(
+		0,
+		snapshot.EventPositionUpdated,
+		snapshot.PositionUpdatedData{
+			Position: p,
+			Reason:   "TRADE",
+		},
+	)
+
+	if s.eventBus != nil {
+		if err := s.eventBus.Publish(event); err != nil {
+			// Log error
+		}
+	} else {
+		// Fallback for tests
+		s.book.Save(p)
+	}
 }
 
 func abs(v float64) float64 {

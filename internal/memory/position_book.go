@@ -34,3 +34,15 @@ func (b *PositionBook) Save(p *domain.Position) {
 	defer b.mu.Unlock()
 	b.positions[key(p.UserID, p.Symbol)] = p
 }
+
+// GetAll returns a copy of the current position map
+func (b *PositionBook) GetAll() map[string]*domain.Position {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	copy := make(map[string]*domain.Position, len(b.positions))
+	for k, v := range b.positions {
+		copy[k] = v
+	}
+	return copy
+}

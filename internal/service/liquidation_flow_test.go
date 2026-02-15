@@ -15,7 +15,7 @@ func TestLiquidationFlow(t *testing.T) {
 
 	match := engine.NewMatchingEngine()
 	positionBook := memory.NewPositionBook()
-	positionSvc := NewPositionService(positionBook)
+	positionSvc := NewPositionService(positionBook, nil)
 	liq := NewLiquidationEngine(match, positionSvc)
 
 	// Open a 10x long at 50000

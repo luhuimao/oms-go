@@ -141,8 +141,21 @@ func (re *ReplayEngine) Verify() error {
 			return fmt.Errorf("failed to load snapshot %d: %w", info.SequenceID, err)
 		}
 
-		// In production, verify snapshot checksum
-		_ = snapshot
+		// Verify snapshot checksum
+		// To verify, we need to reconstruct the state from the snapshot and calculate its checksum
+		// or at least calculate the checksum of the data within the snapshot.
+		// Since Snapshot struct has the same data as SystemState (Orders, Positions),
+		// we can use a helper or temporary SystemState.
+
+		tempState := re.restoreFromSnapshot(snapshot)
+		calculatedChecksum, err := tempState.Checksum()
+		if err != nil {
+			return fmt.Errorf("failed to calculate checksum for snapshot %d: %w", info.SequenceID, err)
+		}
+
+		if snapshot.Checksum != calculatedChecksum {
+			return fmt.Errorf("snapshot %d checksum mismatch: expected %s, got %s", info.SequenceID, snapshot.Checksum, calculatedChecksum)
+		}
 	}
 
 	return nil

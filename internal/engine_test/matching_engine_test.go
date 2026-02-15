@@ -1,13 +1,14 @@
-package engine
+package engine_test
 
 import (
 	"oms-contract/internal/domain"
+	"oms-contract/internal/engine"
 	"testing"
 	"time"
 )
 
 func TestMatchingEngine_BasicMatch(t *testing.T) {
-	engine := NewMatchingEngine()
+	eng := engine.NewMatchingEngine()
 
 	sell := &domain.Order{
 		ID:        1,
@@ -29,8 +30,8 @@ func TestMatchingEngine_BasicMatch(t *testing.T) {
 		CreatedAt: time.Now(),
 	}
 
-	engine.SubmitOrder(sell)
-	trades := engine.SubmitOrder(buy)
+	eng.SubmitOrder(sell)
+	trades := eng.SubmitOrder(buy)
 	// fmt.Printf(
 	// 	"trades: %+v\n",
 	// 	trades,

@@ -25,11 +25,11 @@ const (
 
 // Event represents a single event in the event sourcing system
 type Event struct {
-	ID        int64       `json:"id"`
-	Type      EventType   `json:"type"`
-	Timestamp time.Time   `json:"timestamp"`
-	Data      interface{} `json:"data"`
-	Checksum  string      `json:"checksum"`
+	ID        int64           `json:"id"`
+	Type      EventType       `json:"type"`
+	Timestamp time.Time       `json:"timestamp"`
+	Data      json.RawMessage `json:"data"`
+	Checksum  string          `json:"checksum"`
 }
 
 // OrderCreatedData contains data for ORDER_CREATED event
@@ -59,11 +59,12 @@ type LiquidationData struct {
 
 // NewEvent creates a new event with auto-generated checksum
 func NewEvent(id int64, eventType EventType, data interface{}) *Event {
+	dataBytes, _ := json.Marshal(data)
 	event := &Event{
 		ID:        id,
 		Type:      eventType,
 		Timestamp: time.Now(),
-		Data:      data,
+		Data:      dataBytes,
 	}
 	event.Checksum = event.calculateChecksum()
 	return event
@@ -73,10 +74,10 @@ func NewEvent(id int64, eventType EventType, data interface{}) *Event {
 func (e *Event) calculateChecksum() string {
 	// Create a copy without checksum for hashing
 	temp := struct {
-		ID        int64       `json:"id"`
-		Type      EventType   `json:"type"`
-		Timestamp time.Time   `json:"timestamp"`
-		Data      interface{} `json:"data"`
+		ID        int64           `json:"id"`
+		Type      EventType       `json:"type"`
+		Timestamp time.Time       `json:"timestamp"`
+		Data      json.RawMessage `json:"data"`
 	}{
 		ID:        e.ID,
 		Type:      e.Type,
