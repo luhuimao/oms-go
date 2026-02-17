@@ -1,21 +1,36 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"log"
+	"net"
 	"time"
 
+	"google.golang.org/grpc"
+
+	omsv1 "oms-contract/api/proto"
 	"oms-contract/infra/matching"
 	"oms-contract/internal/domain"
 	"oms-contract/internal/engine"
 	"oms-contract/internal/service"
 	"oms-contract/internal/snapshot"
+	transport "oms-contract/internal/transport/grpc"
 	"oms-contract/pkg/idgen"
 )
 
 func main() {
+	demoMode := flag.Bool("demo", false, "Run the demo scenario")
+	port := flag.Int("port", 50051, "gRPC server port")
+	flag.Parse()
+
 	fmt.Println("===========================================")
 	fmt.Println("   Atlas OMS - Order Management System")
-	fmt.Println("   Production-Ready Demo")
+	if *demoMode {
+		fmt.Println("   MODE: Demo Scenario")
+	} else {
+		fmt.Printf("   MODE: gRPC Server (Port %d)\n", *port)
+	}
 	fmt.Println("===========================================")
 	fmt.Println()
 
@@ -54,14 +69,6 @@ func main() {
 	eventBus := snapshot.NewEventBus(eventStore, systemState)
 	fmt.Println("✓ Event Sourcing infrastructure ready")
 
-	// Use the OrderBook/PositionBook from SystemState if we want strict event sourcing,
-	// or let services have their own.
-	// For this demo, let's use the ones created by SystemState to ensure consistency if we were to replay.
-	// BUT CreateOrder uses EventBus -> SystemState -> SystemState.OrderBook.
-	// OrderService reads from s.book.
-	// If s.book is DIFFERENT from SystemState.OrderBook, OrderService will NOT see updates applied by EventBus!
-	// CRITICAL FIX: We must pass SystemState's books to services.
-
 	orderBook := systemState.OrderBook
 	positionBook := systemState.PositionBook
 	dispatcher := engine.NewDispatcher(4)
@@ -82,7 +89,7 @@ func main() {
 	liqSvc := service.NewLiquidationService(matchingGw, idGen)
 	fmt.Println("✓ Liquidation Service created")
 
-	orderSvc := service.NewOrderService(orderBook, positionSvc, liqSvc, eventBus)
+	orderSvc := service.NewOrderService(orderBook, positionSvc, liqSvc, eventBus, idGen)
 	fmt.Println("✓ Order Service created")
 
 	// Inject OMS back into mock matching (circular dependency resolution)
@@ -90,13 +97,19 @@ func main() {
 	liqSvc = service.NewLiquidationService(matchingGw, idGen)
 
 	// Recreate order service with correct liquidation service
-	orderSvc = service.NewOrderService(orderBook, positionSvc, liqSvc, eventBus)
+	orderSvc = service.NewOrderService(orderBook, positionSvc, liqSvc, eventBus, idGen)
 	fmt.Println("✓ Mock Matching Engine connected")
 
 	// Start periodic snapshots
 	stopSnapshots := make(chan struct{})
 	go snapshotManager.TakeSnapshotPeriodic(systemState, 10*time.Second, stopSnapshots)
 	defer close(stopSnapshots)
+
+	// Start gRPC Server
+	if !*demoMode {
+		startGRPCServer(*port, orderSvc, positionSvc)
+		return // Block forever in startGRPCServer? No, startGRPCServer should block.
+	}
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -513,5 +526,18 @@ func getPriceForSymbol(symbol string) float64 {
 	if price, ok := prices[symbol]; ok {
 		return price
 	}
-	return 1000 // default
+func startGRPCServer(port int, orderSvc *service.OrderService, posSvc *service.PositionService) {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+
+	s := grpc.NewServer()
+	omsServer := transport.NewServer(orderSvc, posSvc)
+	omsv1.RegisterOMSServer(s, omsServer)
+
+	fmt.Printf("🚀 gRPC Server listening at %v\n", lis.Addr())
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
 }
