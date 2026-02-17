@@ -7,6 +7,7 @@ import (
 	"oms-contract/internal/domain"
 	"oms-contract/internal/memory"
 	"oms-contract/internal/snapshot"
+	"oms-contract/pkg/idgen"
 )
 
 type OrderService struct {
@@ -14,6 +15,7 @@ type OrderService struct {
 	risk     *RiskService
 	margin   *MarginService
 	eventBus *snapshot.EventBus
+	idGen    *idgen.Generator
 
 	position   *PositionService // ✅ 必须有
 	liquidator *LiquidationService
@@ -22,7 +24,8 @@ type OrderService struct {
 func NewOrderService(book *memory.OrderBook,
 	pos *PositionService,
 	liq *LiquidationService,
-	eb *snapshot.EventBus) *OrderService {
+	eb *snapshot.EventBus,
+	idGen *idgen.Generator) *OrderService {
 	return &OrderService{
 		book:       book,
 		risk:       &RiskService{},
@@ -30,17 +33,19 @@ func NewOrderService(book *memory.OrderBook,
 		position:   pos,
 		liquidator: liq,
 		eventBus:   eb,
+		idGen:      idGen,
 	}
 }
 
-func (s *OrderService) CreateOrder(o *domain.Order) {
+func (s *OrderService) CreateOrder(o *domain.Order) int64 {
 	if err := s.risk.Check(o); err != nil {
 		o.Status = domain.Rejected
-		return
+		return 0
 	}
 
 	_ = s.margin.Freeze(o)
 
+	o.ID = s.idGen.Next()
 	o.Status = domain.Submitted
 	o.CreatedAt = time.Now()
 
@@ -70,6 +75,7 @@ func (s *OrderService) CreateOrder(o *domain.Order) {
 	}
 
 	fmt.Printf("[OMS] order submitted: %+v\n", o)
+	return o.ID
 }
 
 func (s *OrderService) OnTrade(t *domain.Trade) {
